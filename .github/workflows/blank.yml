@@ -1,0 +1,106 @@
+on:
+  push:
+  schedule:
+    - cron: "38 22 * * *" #早上6点45左右推送
+    
+jobs:
+  bot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Checkout codes'
+        uses: actions/checkout@v2
+      - name: python env
+        uses: actions/setup-python@v1
+        with:
+          python-version: 3.7
+      # 安装依赖
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install setuptools wheel twine
+          pip install bs4
+      - name: 'Get DataSource'
+        run: curl https://news.topurl.cn > ./result.html
+      - name: 'Get Info'
+        run: python ./getInfo.py
+      - name: 'Get Date'
+        run: |
+          echo "SGXC_TIMESTAMP=$(TZ=':Asia/Shanghai' date '+%s')" >> $GITHUB_ENV
+          echo "REPORT_DATE=$(TZ=':Asia/Shanghai' date '+%Y-%m-%d %T')" >> $GITHUB_ENV
+          echo "TODAY_DATE=$(TZ=':Asia/Shanghai' date +'%Y-%m-%d')" >> $GITHUB_ENV
+      - name: 'Get TEXT'
+        run: |
+            echo 'FILE_TEXT<<EOF' >> $GITHUB_ENV
+            cat ./result.txt >> $GITHUB_ENV
+            echo 'EOF' >> $GITHUB_ENV
+      - name: 'Send mail'
+        uses: dawidd6/action-send-mail@master
+        with:
+          server_address: smtp.163.com
+          server_port: 465
+          username: ${{ secrets.MAIL_USER_NMAE }}
+          password: ${{ secrets.MAIL_PWD }}
+          subject: 今日新闻简报推送 (${{env.REPORT_DATE}})
+          body: file://result.txt
+          to: 1129159201@qq.com
+          from: GitHub Actions
+          content_type: text/html
+      - name: "时光相册签到"
+        run: |
+           result=$(curl \
+              -X POST \
+              -H "Content-Type:application/json"\
+              -H "Authorization:${{ secrets.SGXC_AUTHORIZATION }}" \
+              -H "x-Device-IDFA:${{ secrets.SGXC_X_DEVICE_IDFA }}"\
+              -H "x-uid:${{ secrets.SGXC_X_UID }}"\
+              -H "X-Api-Version:${{ secrets.SGXC_API_VERSION }}"\
+              -H "X-Timestamp:${{ env.SGXC_TIMESTAMP }}"\
+              -H "x-device-id: ${{ secrets.SGXC_X_DEVICE_ID }}"\
+              -H "Cookie:${{ secrets.SGXC_COOKIE }}"\
+              -H "X-Locked:1"\
+              -H "Host:api.everphoto.cn"\
+              -H "User-Agent:EverPhoto/2.7.10 (iOS;271002;iPhone11,8;14.0.1;App Store)"\
+              -H "Accept-Language:zh-Hans-CN;q=1.0"\
+              -H "Accept-Encoding: gzip;q=1.0, compress;q=0.5"\
+              -H "Accept:*/*"\
+               https://api.everphoto.cn/users/self/checkin/v2)
+      - name: '发送邮件通知'
+        uses: dawidd6/action-send-mail@master
+        with:
+          server_address: smtp.163.com
+          server_port: 465
+          username: ${{ secrets.MAIL_USER_NMAE }}
+          password: ${{ secrets.MAIL_PWD }}
+          subject: 时光相册签到 (${{env.REPORT_DATE}})
+          body: "🔥时光相册签到成功!已成功白嫖(+125MB)~"
+          to: 1129159201@qq.com
+          from: GitHub Actions
+          content_type: text/plain
+          
+      - name: '发送到钉钉群'
+        uses: fifsky/dingtalk-action@master
+        with:
+          url: ${{ secrets.DINGTALK_WEBHOOK}}
+          type: text
+          at: all
+          content: |
+            ${{env.FILE_TEXT}}
+             
+            🔥时光相册签到成功!已成功白嫖(+125MB)~
+            
+          
+        
+      - name: '打完收工,提交代码!'
+        run: |
+          git config --local user.email "1129159201@qq.com"
+          git config --local user.name "noise"
+          git remote set-url origin https://${{ github.actor }}:${{ secrets.MYGG_TOKEN }}@github.com/${{ github.repository }}
+          git pull 
+          cp -Rf result.txt logs/${{env.TODAY_DATE}}.txt
+          git add .
+          git commit -m "Update By Github Action Bot"
+          git push
+© 2022 GitHub, Inc.
+Terms
+Privacy
+Security
